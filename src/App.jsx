@@ -90,7 +90,7 @@ function IconButton({ title, onClick, svg, href, download, disabled }) {
         style={disabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}
         download={download}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
       />
     );
   }
@@ -158,26 +158,6 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
     window.setTimeout(() => setToast(""), 1400);
   };
 
-  function fallbackCopy(text) {
-    // Works on http://localhost and older browsers more often than clipboard API.
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = String(text);
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.top = "-1000px";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      const ok = document.execCommand && document.execCommand("copy");
-      ta.remove();
-      return Boolean(ok);
-    } catch {
-      return false;
-    }
-  }
-
   const doCopyLink = async () => {
     // Users usually want the direct image link; fall back to the Commons page.
     const link = imgUrl || pageUrl;
@@ -190,11 +170,7 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
     } catch {
       // fall through
     }
-    if (fallbackCopy(link)) {
-      pushToast("Copied");
-      return;
-    }
-    // Last-resort fallback for very locked down contexts.
+    // Fallback for non-secure contexts / blocked clipboard.
     window.prompt("Copy link:", link);
   };
 
@@ -218,14 +194,25 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
       : `wallpaper-${item.id}.jpg`;
     const filename = nameBase.length > 3 ? nameBase : `wallpaper-${item.id}.jpg`;
 
-    // First try a direct download via <a download>. This preserves the click user-gesture
+    // Prefer a URL that sets Content-Disposition: attachment (Commons often honors `?download`).
+    const commonsFileName = d._title
+      ? String(d._title).replace(/^File:/, "").trim()
+      : item._title
+        ? String(item._title).replace(/^File:/, "").trim()
+        : "";
+    const directDownloadUrl = commonsFileName
+      ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
+          commonsFileName,
+        )}?download=1`
+      : imgUrl;
+
+    // First try a direct download via navigation. This preserves the click user-gesture
     // (important on mobile Safari/Chrome), and avoids CORS limitations.
     try {
       const a = document.createElement("a");
-      a.href = imgUrl;
+      a.href = directDownloadUrl;
       a.download = filename;
       a.rel = "noreferrer";
-      a.target = "_blank";
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -312,6 +299,8 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
               src={previewUrl || imgUrl}
               alt="Wallpaper preview"
               loading="lazy"
+              decoding="async"
+              fetchPriority="high"
             />
           </div>
           <div>
@@ -470,16 +459,30 @@ export default function App() {
         page: nextPage,
         offset,
       });
-      const data = Array.isArray(res?.data) ? res.data : [];
+      const rawData = Array.isArray(res?.data) ? res.data : [];
+      // Defensive de-dupe: Commons search can occasionally return repeated items.
+      const data = (() => {
+        const seen = new Set();
+        const out = [];
+        for (const it of rawData) {
+          const id = it?.id == null ? null : String(it.id);
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          out.push({ ...it, id });
+        }
+        return out;
+      })();
       const m = res?.meta || null;
       startTransition(() => {
         setItems((prev) => {
+          const prevList = Array.isArray(prev) ? prev : [];
+          const prevSeen = new Set(prevList.map((x) => String(x?.id ?? "")));
+          const add = data.filter((x) => !prevSeen.has(String(x.id)));
+
           if (mode === "appendUnique") {
-            const seen = new Set(prev.map((x) => x.id));
-            const add = data.filter((x) => !seen.has(x.id));
-            return add.length ? [...prev, ...add] : prev;
+            return add.length ? [...prevList, ...add] : prevList;
           }
-          return append ? [...prev, ...data] : data;
+          return append ? [...prevList, ...add] : data;
         });
         if (mode !== "appendUnique") {
           setPage(nextPage);
@@ -861,9 +864,11 @@ export default function App() {
 
         <div className="gridWrap">
           <div className="masonry" aria-label="Wallpapers">
-            {(view === "favorites" ? effectiveItems : browseShown).map((it) => {
+            {(view === "favorites" ? effectiveItems : browseShown).map((it, idx) => {
               const fav = favs.has(String(it.id));
               const resLabel = it.resolution || `${it.dimension_x}x${it.dimension_y}`;
+              const small = it.thumbs?.small || it.thumbs?.large;
+              const large = it.thumbs?.large || it.thumbs?.small;
               return (
                 <div className="card" key={it.id}>
                   <button
@@ -878,9 +883,17 @@ export default function App() {
                   >
                     <img
                       className="thumb"
-                      src={it.thumbs?.large || it.thumbs?.small}
+                      src={small}
+                      srcSet={
+                        small && large && small !== large
+                          ? `${small} 420w, ${large} 900w`
+                          : undefined
+                      }
+                      sizes="(min-width: 1020px) 25vw, (min-width: 720px) 33vw, 50vw"
                       alt={resLabel}
                       loading="lazy"
+                      decoding="async"
+                      fetchPriority={idx < 2 ? "high" : "low"}
                       style={{
                         aspectRatio: `${it.dimension_x} / ${it.dimension_y}`,
                         objectFit: "cover",

@@ -4,6 +4,8 @@
 // Ref: https://www.mediawiki.org/wiki/API:Cross-site_requests
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
 const LIMIT = 24;
+const THUMB_SMALL = 420;
+const THUMB_LARGE = 900;
 
 function commonsUrl(params) {
   const url = new URL(COMMONS_API);
@@ -70,9 +72,9 @@ export async function searchWallpapers({ q, page = 1, offset, sort } = {}) {
     prop: "imageinfo|info|pageimages",
     inprop: "url",
     piprop: "thumbnail",
-    pithumbsize: 640,
+    pithumbsize: THUMB_SMALL,
     iiprop: "url|size|mime|user|timestamp|extmetadata",
-    iiurlwidth: 1200,
+    iiurlwidth: THUMB_LARGE,
   });
 
   const res = await fetch(url, { headers: { accept: "application/json" } });
