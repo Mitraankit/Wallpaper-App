@@ -29,6 +29,10 @@
 
 .app {
   min-height: 100vh;
+  /* Progressive enhancement: dvh tracks the actual visible viewport instead
+     of the largest possible one, so the page doesn't jump/resize under the
+     sticky header while a mobile browser's address bar shows or hides. */
+  min-height: 100dvh;
   color: var(--text);
   font-family: var(--font);
   overflow-x: hidden;
@@ -325,8 +329,7 @@
 
 .filters {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  flex-direction: column;
   gap: 12px;
   padding: 12px;
   border-radius: var(--r2);
@@ -335,13 +338,17 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
+  overflow: hidden;
 }
 
-.filters > .seg {
-  flex: 0 0 auto;
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
 }
 
-.filters > .field {
+.filterRowFields .field {
   flex: 1 1 150px;
   min-width: 140px;
 }
@@ -957,7 +964,7 @@
   .masonry {
     column-count: 3;
   }
-  .filters > .field {
+  .filterRowFields .field {
     flex: 1 1 200px;
     max-width: 280px;
   }
@@ -1007,7 +1014,7 @@
 }
 
 @media (max-width: 360px) {
-  .filters > .field {
+  .filterRowFields .field {
     flex-basis: 100%;
   }
 }

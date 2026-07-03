@@ -1071,49 +1071,53 @@ export default function App() {
 
       <main className="content">
         <section className="filters" aria-label="Filters">
-          <div className="seg" role="group" aria-label="Quick sorting">
-            <button
-              type="button"
-              className={sorting === "relevance" ? "on" : ""}
-              onClick={() => setSorting("relevance")}
-            >
-              Top
-            </button>
-            <button
-              type="button"
-              className={sorting === "latest" ? "on" : ""}
-              onClick={() => setSorting("latest")}
-            >
-              Latest
-            </button>
-            <button
-              type="button"
-              className={sorting === "random" ? "on" : ""}
-              onClick={() => setSorting("random")}
-              title="Shuffle results"
-            >
-              Random
-            </button>
+          <div className="filterRow">
+            <div className="seg" role="group" aria-label="Quick sorting">
+              <button
+                type="button"
+                className={sorting === "relevance" ? "on" : ""}
+                onClick={() => setSorting("relevance")}
+              >
+                Top
+              </button>
+              <button
+                type="button"
+                className={sorting === "latest" ? "on" : ""}
+                onClick={() => setSorting("latest")}
+              >
+                Latest
+              </button>
+              <button
+                type="button"
+                className={sorting === "random" ? "on" : ""}
+                onClick={() => setSorting("random")}
+                title="Shuffle results"
+              >
+                Random
+              </button>
+            </div>
           </div>
 
-          <div className="field">
-            <label>Min Resolution</label>
-            <input
-              className="input"
-              value={atleast}
-              onChange={(e) => setAtleast(e.target.value)}
-              placeholder="e.g. 1920x1080"
-            />
-          </div>
+          <div className="filterRow filterRowFields">
+            <div className="field">
+              <label>Min Resolution</label>
+              <input
+                className="input"
+                value={atleast}
+                onChange={(e) => setAtleast(e.target.value)}
+                placeholder="e.g. 1920x1080"
+              />
+            </div>
 
-          <div className="field">
-            <label>Ratios</label>
-            <input
-              className="input"
-              value={ratios}
-              onChange={(e) => setRatios(e.target.value)}
-              placeholder="e.g. 16x9,21x9"
-            />
+            <div className="field">
+              <label>Ratios</label>
+              <input
+                className="input"
+                value={ratios}
+                onChange={(e) => setRatios(e.target.value)}
+                placeholder="e.g. 16x9,21x9"
+              />
+            </div>
           </div>
         </section>
 

@@ -1,6 +1,10 @@
 html,
 body {
   height: 100%;
+  /* Prevent the pull-to-refresh / rubber-band overscroll gesture from
+     hijacking touches that start near the top of the page (e.g. the sticky
+     header's buttons), which can make taps there silently fail. */
+  overscroll-behavior-y: contain;
 }
 
 body {
