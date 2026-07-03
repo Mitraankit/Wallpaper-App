@@ -45,6 +45,68 @@ export function shareSvg() {
   `;
 }
 
+export function searchSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" stroke="rgba(255,255,255,.7)" stroke-width="2"/>
+      <path d="M20 20l-4.3-4.3" stroke="rgba(255,255,255,.7)" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+export function alertSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 3.5 21 19.5H3L12 3.5Z" stroke="rgba(255,136,162,.85)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M12 9.5v4.2" stroke="rgba(255,136,162,.85)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M12 16.6h.01" stroke="rgba(255,136,162,.85)" stroke-width="2.6" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+export function heartOutlineSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78Z" stroke="rgba(255,255,255,.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+}
+
+export function chevronLeftSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M15 5l-7 7 7 7" stroke="rgba(255,255,255,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+}
+
+export function chevronRightSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M9 5l7 7-7 7" stroke="rgba(255,255,255,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+}
+
+export function infoSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,.86)" stroke-width="2"/>
+      <path d="M12 11v5.2" stroke="rgba(255,255,255,.86)" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M12 7.8h.01" stroke="rgba(255,255,255,.86)" stroke-width="2.6" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+export function spinnerSvg() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,.18)" stroke-width="2.4"/>
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="rgba(255,255,255,.85)" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
 export function wallpaperSvg() {
   return `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

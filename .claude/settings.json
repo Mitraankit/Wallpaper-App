@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"console.log\\(process.version\\)\")",
+      "Bash(npm install *)",
+      "Bash(magick -background \"#0b1230\" -density 384 public/icon.svg -resize 512x512 public/pwa-512x512.png)",
+      "Bash(magick public/pwa-512x512.png -resize 192x192 public/pwa-192x192.png)",
+      "Bash(magick public/pwa-512x512.png -resize 180x180 public/apple-touch-icon.png)",
+      "Bash(magick -background \"#0b1230\" -density 384 public/icon.svg -resize 384x384 -gravity center -background \"#0b1230\" -extent 512x512 public/pwa-maskable-512x512.png)",
+      "Bash(npm run *)",
+      "Bash(grep -n \"const reload = \\\\|useState\\(false\\); *$\\\\|\\\\[loading, setLoading\\\\]\" /Users/ankitkumar/Documents/F-Projects/wallpaper-app/src/App.jsx)"
+    ]
+  }
+}

@@ -22,8 +22,12 @@ function pageToItem(page) {
   const w = Number(ii?.width) || 0;
   const h = Number(ii?.height) || 0;
   const resolution = w && h ? `${w}x${h}` : "";
+  // Fall back to the reliably-generated pageimages thumbnail before the raw
+  // original file: when imageinfo's own thumburl is missing (large/unusual
+  // source files), jumping straight to the original triggers slow loads and,
+  // in Chromium, `ERR_BLOCKED_BY_ORB` on some cross-origin originals.
   const thumbLarge =
-    ii?.thumburl || ii?.url || page?.thumbnail?.source || undefined;
+    ii?.thumburl || page?.thumbnail?.source || ii?.url || undefined;
   const thumbSmall =
     page?.thumbnail?.source ||
     ii?.thumburl ||

@@ -3,11 +3,18 @@ import "./App.css";
 import { getWallpaper, searchWallpapers } from "./lib/wallhaven";
 import { loadJson, saveJson } from "./lib/storage";
 import {
+  alertSvg,
+  chevronLeftSvg,
+  chevronRightSvg,
   closeSvg,
   downloadSvg,
+  heartOutlineSvg,
   heartSvg,
+  infoSvg,
   linkSvg,
+  searchSvg,
   shareSvg,
+  spinnerSvg,
   wallpaperSvg,
 } from "./lib/icons";
 
@@ -33,10 +40,6 @@ function useIntersection(callback) {
     return () => obs.disconnect();
   }, [callback]);
   return ref;
-}
-
-function buildCategories({ general, nature, people }) {
-  return `${general ? "1" : "0"}${nature ? "1" : "0"}${people ? "1" : "0"}`;
 }
 
 function bytesToMb(bytes) {
@@ -106,11 +109,132 @@ function IconButton({ title, onClick, svg, href, download, disabled }) {
   );
 }
 
-function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
+// Two close ratios give the masonry grid a gentle brick rhythm without the
+// jarring, chaotic heights a wide random spread produces.
+const SKELETON_RATIOS = [0.82, 0.94];
+
+function SkeletonCard({ index = 0 }) {
+  const ratio = SKELETON_RATIOS[index % SKELETON_RATIOS.length];
+  const delay = `${(index % 4) * 90}ms`;
+  return (
+    <div className="card skeletonCard" aria-hidden="true">
+      <div
+        className="skeleton"
+        style={{ aspectRatio: `${ratio}`, width: "100%", animationDelay: delay }}
+      />
+    </div>
+  );
+}
+
+function SkeletonRow({ count = 8, keyPrefix = "sk" }) {
+  return Array.from({ length: count }, (_, i) => (
+    <SkeletonCard index={i} key={`${keyPrefix}-${i}`} />
+  ));
+}
+
+function WallpaperCard({ item, fav, onOpen, onToggleFav, priority }) {
+  const [loaded, setLoaded] = useState(false);
+  const resLabel = item.resolution || `${item.dimension_x}x${item.dimension_y}`;
+  const small = item.thumbs?.small || item.thumbs?.large;
+  const large = item.thumbs?.large || item.thumbs?.small;
+  const ratio =
+    item.dimension_x && item.dimension_y
+      ? `${item.dimension_x} / ${item.dimension_y}`
+      : "4 / 5";
+
+  return (
+    <div className="card">
+      <button
+        type="button"
+        className="cardOpen"
+        onClick={() => onOpen(item)}
+        title="Open"
+      >
+        <div className={`thumbWrap ${loaded ? "loaded" : ""}`} style={{ aspectRatio: ratio }}>
+          {!loaded ? <div className="skeleton thumbSkeleton" /> : null}
+          <img
+            className="thumb"
+            src={small}
+            srcSet={
+              small && large && small !== large
+                ? `${small} 420w, ${large} 900w`
+                : undefined
+            }
+            sizes="(min-width: 1020px) 25vw, (min-width: 720px) 33vw, 50vw"
+            alt={resLabel}
+            loading="lazy"
+            decoding="async"
+            fetchPriority={priority ? "high" : "low"}
+            onLoad={() => setLoaded(true)}
+          />
+        </div>
+      </button>
+      <div className="cardBar">
+        <div className="chip">{resLabel}</div>
+        <button
+          type="button"
+          className={`heart ${fav ? "on" : ""}`}
+          onClick={() => onToggleFav(item.id, item)}
+          title={fav ? "Unfavorite" : "Favorite"}
+          dangerouslySetInnerHTML={{ __html: heartSvg({ filled: fav }) }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, subtitle, action }) {
+  return (
+    <div className="emptyState">
+      <div className="emptyIcon" dangerouslySetInnerHTML={{ __html: icon }} />
+      <div className="emptyTitle">{title}</div>
+      {subtitle ? <div className="emptySubtitle">{subtitle}</div> : null}
+      {action ? <div className="emptyAction">{action}</div> : null}
+    </div>
+  );
+}
+
+function Modal({
+  open,
+  onClose,
+  item,
+  isFav,
+  onToggleFav,
+  onSearchTag,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
+}) {
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [toast, setToast] = useState("");
+  const [heroLoaded, setHeroLoaded] = useState(false);
+  const [heroFailed, setHeroFailed] = useState(false);
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const touchRef = useRef(null);
+
+  const handleTouchStart = (e) => {
+    const t = e.touches[0];
+    touchRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+  };
+
+  const handleTouchEnd = (e) => {
+    const start = touchRef.current;
+    touchRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.time;
+    // Ignore slow drags, tiny movements, and mostly-vertical gestures so this
+    // doesn't fight with pinch/scroll gestures on the image itself.
+    if (dt > 600 || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx > 0) onPrev?.();
+    else onNext?.();
+  };
 
   useEffect(() => {
     if (!open || !item?.id) return;
@@ -119,6 +243,10 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
     setErr("");
     setDetails(null);
     setToast("");
+    setHeroLoaded(false);
+    setHeroFailed(false);
+    setCandidateIndex(0);
+    setInfoOpen(false);
     getWallpaper(item.id)
       .then((d) => {
         if (!alive) return;
@@ -141,17 +269,42 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
     if (!open) return;
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") onPrev?.();
+      else if (e.key === "ArrowRight") onNext?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, onPrev, onNext]);
+
+  // Keep the page underneath from scrolling while the fullscreen viewer is up.
+  useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open]);
 
   if (!open || !item) return null;
 
   const d = details || item;
   const pageUrl = `https://commons.wikimedia.org/?curid=${encodeURIComponent(item.id)}`;
   const imgUrl = item.path || d.path;
-  const previewUrl = d.thumbs?.original || d.thumbs?.large || item.thumbs?.large;
+  // Prefer the grid's already-loaded 900px thumbnail (instant, browser-cached)
+  // over the detail endpoint's 2400px render or the raw original file — some
+  // Commons originals are huge (tens of MB, occasionally scanned TIFFs), and
+  // even the 2400px detail thumb was slow enough to hang the viewer open on
+  // a spinner instead of showing the picture instantly.
+  const previewUrl = item.thumbs?.large || d.thumbs?.large || d.thumbs?.original;
+  // A handful of Commons files have no generated thumbnail at all, so the
+  // only candidate is the raw original — which occasionally fails to load
+  // (some hosts block it). Try each known URL in turn instead of getting
+  // stuck on a spinner if the first one 404s or is blocked.
+  const heroCandidates = [
+    ...new Set([previewUrl, imgUrl, item.thumbs?.small, d.thumbs?.small].filter(Boolean)),
+  ];
+  const heroSrc = heroCandidates[candidateIndex];
 
   const pushToast = (msg) => {
     setToast(msg);
@@ -194,34 +347,13 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
       : `wallpaper-${item.id}.jpg`;
     const filename = nameBase.length > 3 ? nameBase : `wallpaper-${item.id}.jpg`;
 
-    // Prefer a URL that sets Content-Disposition: attachment (Commons often honors `?download`).
-    const commonsFileName = d._title
-      ? String(d._title).replace(/^File:/, "").trim()
-      : item._title
-        ? String(item._title).replace(/^File:/, "").trim()
-        : "";
-    const directDownloadUrl = commonsFileName
-      ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
-          commonsFileName,
-        )}?download=1`
-      : imgUrl;
+    pushToast("Downloading…");
 
-    // First try a direct download via navigation. This preserves the click user-gesture
-    // (important on mobile Safari/Chrome), and avoids CORS limitations.
-    try {
-      const a = document.createElement("a");
-      a.href = directDownloadUrl;
-      a.download = filename;
-      a.rel = "noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      pushToast("Downloading…");
-      return;
-    } catch {
-      // fall through
-    }
-
+    // Fetch the bytes and save from a same-origin blob URL. This is the only
+    // way to force a real save (no new tab / page navigation) regardless of
+    // what headers the remote host sends `download` on a cross-origin <a>
+    // is silently ignored by most mobile browsers, which is what made this
+    // open the image in a new tab instead of downloading it.
     try {
       const res = await fetch(imgUrl, { mode: "cors" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -234,12 +366,51 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      pushToast("Downloaded");
+      return;
+    } catch {
+      // CORS or network failure — fall through to a direct link.
+    }
+
+    // Prefer a URL that sets Content-Disposition: attachment (Commons often honors `?download`).
+    const commonsFileName = d._title
+      ? String(d._title).replace(/^File:/, "").trim()
+      : item._title
+        ? String(item._title).replace(/^File:/, "").trim()
+        : "";
+    const directDownloadUrl = commonsFileName
+      ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
+          commonsFileName,
+        )}?download=1`
+      : imgUrl;
+
+    try {
+      const a = document.createElement("a");
+      a.href = directDownloadUrl;
+      a.download = filename;
+      // Cross-origin browsers can silently ignore `download` — target a new
+      // tab so that worst case, the app itself never navigates away.
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       pushToast("Downloading…");
     } catch {
-      // Fallback: let the browser handle it (may open in a new tab).
+      // Last resort: let the browser handle it in a new tab.
       window.open(imgUrl, "_blank", "noopener,noreferrer");
     }
   };
+
+  const hasMeta =
+    Boolean(d.resolution) ||
+    Boolean(d.ratio) ||
+    Number.isFinite(d.file_size) ||
+    d.views != null ||
+    d.favorites != null ||
+    Boolean(d.uploader?.username) ||
+    Boolean(d._license) ||
+    (Array.isArray(d.tags) && d.tags.length > 0);
 
   return (
     <div
@@ -250,113 +421,253 @@ function Modal({ open, onClose, item, isFav, onToggleFav, onSearchTag }) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal">
-        <div className="modalTop">
-          <div>
-            <div className="modalTitle">
+      {/* A single fullscreen, non-scrolling stage: the image is always fully
+          visible with no page scroll. Metadata is opt-in via the info sheet
+          so it never forces the primary view to scroll. */}
+      <div className="viewer" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        {hasPrev ? (
+          <button
+            type="button"
+            className="viewerNav viewerNavPrev"
+            title="Previous"
+            aria-label="Previous wallpaper"
+            onClick={onPrev}
+            dangerouslySetInnerHTML={{ __html: chevronLeftSvg() }}
+          />
+        ) : null}
+        {hasNext ? (
+          <button
+            type="button"
+            className="viewerNav viewerNavNext"
+            title="Next"
+            aria-label="Next wallpaper"
+            onClick={onNext}
+            dangerouslySetInnerHTML={{ __html: chevronRightSvg() }}
+          />
+        ) : null}
+        <div className="viewerStage">
+          {heroFailed ? (
+            <div className="viewerImgError">
+              <div
+                className="emptyIcon"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: alertSvg() }}
+              />
+              <div>Preview unavailable</div>
+              <a
+                className="btn ghost"
+                href={imgUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open original
+              </a>
+            </div>
+          ) : (
+            <>
+              {!heroLoaded ? <div className="skeleton viewerImgSkeleton" /> : null}
+              {heroSrc ? (
+                <img
+                  key={heroSrc}
+                  className={`viewerImg ${heroLoaded ? "loaded" : ""}`}
+                  src={heroSrc}
+                  alt="Wallpaper preview"
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                  onLoad={() => setHeroLoaded(true)}
+                  onError={() => {
+                    if (candidateIndex < heroCandidates.length - 1) {
+                      setCandidateIndex((i) => i + 1);
+                    } else {
+                      setHeroFailed(true);
+                    }
+                  }}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+
+        <div className="viewerTopBar">
+          <div className="viewerTitle">
+            <div className="viewerTitleMain">
               {safeText(d.resolution || "Wallpaper")}{" "}
-              <span style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                #{item.id}
-              </span>
+              <span className="viewerId">#{item.id}</span>
             </div>
             <div className="subtitle" style={{ marginTop: 2 }}>
-              {toast
-                ? toast
-                : loading
-                  ? "Loading details…"
-                  : err
-                    ? err
-                    : safeText(d.source || "")}
+              {toast ? (
+                toast
+              ) : loading ? (
+                <span className="inlineLoading">
+                  <span
+                    className="spin"
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: spinnerSvg() }}
+                  />
+                  Loading details…
+                </span>
+              ) : err ? (
+                err
+              ) : (
+                safeText(d.source || "")
+              )}
             </div>
           </div>
-          <div className="modalBtns">
-            <IconButton
-              title={isFav ? "Unfavorite" : "Favorite"}
-              onClick={() => onToggleFav(item.id, details || item)}
-              svg={heartSvg({ filled: isFav })}
-            />
-            <IconButton title="Copy image link" onClick={doCopyLink} svg={linkSvg()} />
-            <IconButton
-              title="Share"
-              onClick={doShare}
-              svg={shareSvg()}
-              disabled={!navigator.share}
-            />
-            <IconButton
-              title="Download"
-              onClick={doDownload}
-              svg={downloadSvg()}
-              disabled={!imgUrl}
-            />
-            <IconButton title="Close" onClick={onClose} svg={closeSvg()} />
-          </div>
+          <IconButton title="Close" onClick={onClose} svg={closeSvg()} />
         </div>
 
-        <div className="modalBody">
-          <div>
-            <img
-              className="heroImg"
-              src={previewUrl || imgUrl}
-              alt="Wallpaper preview"
-              loading="lazy"
-              decoding="async"
-              fetchPriority="high"
-            />
-          </div>
-          <div>
-            <div className="metaGrid">
-              <div className="kv">
-                <div className="k">Resolution</div>
-                <div className="v">{safeText(d.resolution || "--")}</div>
-              </div>
-              <div className="kv">
-                <div className="k">Ratio</div>
-                <div className="v">{safeText(d.ratio || "--")}</div>
-              </div>
-              <div className="kv">
-                <div className="k">Size</div>
-                <div className="v">{bytesToMb(d.file_size)}</div>
-              </div>
-              <div className="kv">
-                <div className="k">Views</div>
-                <div className="v">{safeText(d.views ?? "--")}</div>
-              </div>
-              <div className="kv">
-                <div className="k">Favorites</div>
-                <div className="v">{safeText(d.favorites ?? "--")}</div>
-              </div>
-              <div className="kv">
-                <div className="k">Uploader</div>
-                <div className="v">{safeText(d.uploader?.username || "--")}</div>
-              </div>
-              <div className="kv">
-                <div className="k">License</div>
-                <div className="v">{safeText(d._license || "--")}</div>
-              </div>
-            </div>
-
-            {Array.isArray(d.tags) && d.tags.length > 0 ? (
-              <div style={{ marginTop: 12 }}>
-                <div className="hint" style={{ marginBottom: 8 }}>
-                  Tags
-                </div>
-                <div className="tags">
-                  {d.tags.slice(0, 22).map((t) => (
-                    <button
-                      className="tag"
-                      type="button"
-                      key={t.id}
-                      onClick={() => onSearchTag(t.name)}
-                      title={`Search: ${t.name}`}
-                    >
-                      {t.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
+        <div className="viewerBottomBar">
+          <IconButton
+            title={isFav ? "Unfavorite" : "Favorite"}
+            onClick={() => onToggleFav(item.id, details || item)}
+            svg={heartSvg({ filled: isFav })}
+          />
+          <IconButton title="Copy image link" onClick={doCopyLink} svg={linkSvg()} />
+          <IconButton
+            title="Share"
+            onClick={doShare}
+            svg={shareSvg()}
+            disabled={!navigator.share}
+          />
+          <IconButton
+            title="Download"
+            onClick={doDownload}
+            svg={downloadSvg()}
+            disabled={!imgUrl}
+          />
+          <button
+            type="button"
+            className={`iconBtn ${infoOpen ? "on" : ""}`}
+            title={infoOpen ? "Hide details" : "Show details"}
+            aria-label={infoOpen ? "Hide details" : "Show details"}
+            aria-pressed={infoOpen}
+            onClick={() => setInfoOpen((v) => !v)}
+            dangerouslySetInnerHTML={{ __html: infoSvg() }}
+          />
         </div>
+
+        {infoOpen ? (
+          <div className="infoSheet" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="infoSheetHandle" aria-hidden="true" />
+            {!hasMeta && !loading ? (
+              <div className="hint">No details available.</div>
+            ) : (
+              <>
+                <div className="metaGrid">
+                  <div className="kv">
+                    <div className="k">Resolution</div>
+                    <div className="v">
+                      {d.resolution ? safeText(d.resolution) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Ratio</div>
+                    <div className="v">
+                      {d.ratio ? safeText(d.ratio) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Size</div>
+                    <div className="v">
+                      {Number.isFinite(d.file_size) ? bytesToMb(d.file_size) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Views</div>
+                    <div className="v">
+                      {d.views != null ? safeText(d.views) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Favorites</div>
+                    <div className="v">
+                      {d.favorites != null ? safeText(d.favorites) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Uploader</div>
+                    <div className="v">
+                      {d.uploader?.username ? safeText(d.uploader.username) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">License</div>
+                    <div className="v">
+                      {d._license ? safeText(d._license) : loading ? (
+                        <span className="skeleton textSkeleton" />
+                      ) : (
+                        "--"
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="hint" style={{ marginBottom: 8 }}>
+                      Tags
+                    </div>
+                    <div className="tags">
+                      {Array.from({ length: 6 }, (_, i) => (
+                        <span
+                          className="skeleton tagSkeleton"
+                          key={i}
+                          style={{ width: 40 + ((i * 17) % 46) }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {!loading && Array.isArray(d.tags) && d.tags.length > 0 ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="hint" style={{ marginBottom: 8 }}>
+                      Tags
+                    </div>
+                    <div className="tags">
+                      {d.tags.slice(0, 22).map((t) => (
+                        <button
+                          className="tag"
+                          type="button"
+                          key={t.id}
+                          onClick={() => onSearchTag(t.name)}
+                          title={`Search: ${t.name}`}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -369,32 +680,18 @@ export default function App() {
   const [view, setView] = useState(savedPrefs?.view ?? "browse"); // browse | favorites
   const [atleast, setAtleast] = useState(savedPrefs?.atleast ?? "");
   const [ratios, setRatios] = useState(savedPrefs?.ratios ?? "");
-  const [cats, setCats] = useState(
-    (() => {
-      const c = savedPrefs?.cats;
-      if (c && typeof c === "object") {
-        // Back-compat: old config used `anime`; map it to `nature`.
-        const nature =
-          typeof c.nature === "boolean" ? c.nature : Boolean(c.anime);
-        return {
-          general: typeof c.general === "boolean" ? c.general : true,
-          nature,
-          people: typeof c.people === "boolean" ? c.people : true,
-        };
-      }
-      return { general: true, nature: true, people: true };
-    })(),
-  );
+  // Default to "random" so a fresh load (or a plain refresh) surfaces a new
+  // set of wallpapers instead of the same deterministic "top" ranking.
   const [sorting, setSorting] = useState(() => {
     const s = savedPrefs?.sorting;
-    return s === "relevance" || s === "latest" || s === "random" ? s : "relevance";
+    return s === "relevance" || s === "latest" || s === "random" ? s : "random";
   });
 
   const [page, setPage] = useState(1);
   const [items, setItems] = useState([]);
   const [nextOffset, setNextOffset] = useState(null);
   const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState(false);
@@ -406,22 +703,7 @@ export default function App() {
   const favs = useMemo(() => new Set(favStore.ids), [favStore.ids]);
 
   const params = useMemo(() => {
-    const topicBits = buildCategories(cats);
-    const topic =
-      topicBits === "111"
-        ? ""
-        : topicBits === "010"
-          ? " nature landscape"
-        : topicBits === "001"
-          ? " portrait"
-          : topicBits === "011"
-            ? " nature portrait"
-            : topicBits === "110"
-              ? " nature landscape"
-              : topicBits === "101"
-                ? " portrait"
-                : "";
-    const q = clampLen(appliedQuery, 220) + topic;
+    const q = clampLen(appliedQuery, 220);
 
     const sort =
       sorting === "latest"
@@ -433,7 +715,7 @@ export default function App() {
       q,
       sort,
     };
-  }, [appliedQuery, cats, sorting]);
+  }, [appliedQuery, sorting]);
 
   useEffect(() => {
     saveJson(LS_PREFS, {
@@ -442,9 +724,8 @@ export default function App() {
       sorting,
       atleast,
       ratios,
-      cats,
     });
-  }, [appliedQuery, view, sorting, atleast, ratios, cats]);
+  }, [appliedQuery, view, sorting, atleast, ratios]);
 
   const fetchPage = async (
     nextPage,
@@ -517,6 +798,7 @@ export default function App() {
     if (scroll) scrollToTop({ smooth });
     setNextOffset(null);
     setHasMore(true);
+    setItems([]);
     fetchPage(1, { append: false, overrideParams: override, offset: null });
   };
 
@@ -667,9 +949,32 @@ export default function App() {
   }
 
   const browseShown = useMemo(() => filterLocal(items), [items, atleast, ratios]);
+  const shownList = view === "favorites" ? effectiveItems : browseShown;
+
+  const activeIndex = active
+    ? shownList.findIndex((x) => String(x.id) === String(active.id))
+    : -1;
+  const hasPrev = activeIndex > 0;
+  const hasNext = activeIndex >= 0 && activeIndex < shownList.length - 1;
+  const goPrev = () => {
+    if (hasPrev) setActive(shownList[activeIndex - 1]);
+  };
+  const goNext = () => {
+    if (hasNext) setActive(shownList[activeIndex + 1]);
+  };
+
+  const isInitialLoading = view === "browse" && loading && items.length === 0;
+  const isPaginating = view === "browse" && loading && items.length > 0;
+  const initialError = view === "browse" && Boolean(err) && items.length === 0;
+  const noResults = view === "browse" && !loading && !err && browseShown.length === 0;
+  const noFavorites = view === "favorites" && favs.size === 0;
 
   return (
     <div className="app">
+      <div
+        className={`topProgress ${loading || refreshing ? "on" : ""}`}
+        aria-hidden="true"
+      />
       <div className="bg" aria-hidden="true">
         <div className="grain" />
         <div className="blob blobA" />
@@ -687,7 +992,6 @@ export default function App() {
               />
               <div>
                 <div className="title">Wallpapers</div>
-                <div className="subtitle">Wikimedia Commons</div>
               </div>
             </div>
             <div className="actions">
@@ -792,64 +1096,52 @@ export default function App() {
             </button>
           </div>
 
-          <div className="filtersGrid">
-            <div className="field">
-              <label>Categories</label>
-              <div className="seg" role="group" aria-label="Categories">
-                {["general", "nature", "people"].map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={cats[k] ? "on" : ""}
-                    onClick={() =>
-                      setCats((p) => ({
-                        ...(() => {
-                          const next = { ...p, [k]: !p[k] };
-                          if (!next.general && !next.nature && !next.people) {
-                            next.general = true;
-                          }
-                          return next;
-                        })(),
-                      }))
-                    }
-                  >
-                    {k}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="field">
+            <label>Min Resolution</label>
+            <input
+              className="input"
+              value={atleast}
+              onChange={(e) => setAtleast(e.target.value)}
+              placeholder="e.g. 1920x1080"
+            />
+          </div>
 
-            <div className="field">
-              <label>Min Resolution</label>
-              <input
-                className="input"
-                value={atleast}
-                onChange={(e) => setAtleast(e.target.value)}
-                placeholder="e.g. 1920x1080"
-              />
-            </div>
-
-            <div className="field">
-              <label>Ratios</label>
-              <input
-                className="input"
-                value={ratios}
-                onChange={(e) => setRatios(e.target.value)}
-                placeholder="e.g. 16x9,21x9"
-              />
-            </div>
+          <div className="field">
+            <label>Ratios</label>
+            <input
+              className="input"
+              value={ratios}
+              onChange={(e) => setRatios(e.target.value)}
+              placeholder="e.g. 16x9,21x9"
+            />
           </div>
         </section>
 
         <div className="statusRow">
           <div className="status">
-            {err
-              ? `Error: ${err}`
-              : loading
-                ? "Loading…"
-                : view === "favorites"
-                  ? `${favs.size} favorites`
-                  : `${browseShown.length} shown · page ${page}`}
+            {err ? (
+              <span className="statusError">
+                <span
+                  className="statusIcon"
+                  aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: alertSvg() }}
+                />
+                {err}
+              </span>
+            ) : loading ? (
+              <span className="inlineLoading">
+                <span
+                  className="spin"
+                  aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: spinnerSvg() }}
+                />
+                Loading…
+              </span>
+            ) : view === "favorites" ? (
+              `${favs.size} favorite${favs.size === 1 ? "" : "s"}`
+            ) : (
+              `${browseShown.length} shown · page ${page}`
+            )}
           </div>
           {view === "favorites" ? (
             <div className="status">
@@ -857,91 +1149,109 @@ export default function App() {
                 ? `Loading ${Math.min(missingFavIds.length, 6)}…`
                 : `${effectiveItems.length} shown`}
             </div>
-          ) : !hasMore ? (
+          ) : !loading && !hasMore && browseShown.length > 0 ? (
             <div className="status">End</div>
           ) : null}
         </div>
 
         <div className="gridWrap">
-          <div className="masonry" aria-label="Wallpapers">
-            {(view === "favorites" ? effectiveItems : browseShown).map((it, idx) => {
-              const fav = favs.has(String(it.id));
-              const resLabel = it.resolution || `${it.dimension_x}x${it.dimension_y}`;
-              const small = it.thumbs?.small || it.thumbs?.large;
-              const large = it.thumbs?.large || it.thumbs?.small;
-              return (
-                <div className="card" key={it.id}>
-                  <button
-                    type="button"
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      display: "block",
-                    }}
-                    onClick={() => onOpen(it)}
-                    title="Open"
-                  >
-                    <img
-                      className="thumb"
-                      src={small}
-                      srcSet={
-                        small && large && small !== large
-                          ? `${small} 420w, ${large} 900w`
-                          : undefined
-                      }
-                      sizes="(min-width: 1020px) 25vw, (min-width: 720px) 33vw, 50vw"
-                      alt={resLabel}
-                      loading="lazy"
-                      decoding="async"
-                      fetchPriority={idx < 2 ? "high" : "low"}
-                      style={{
-                        aspectRatio: `${it.dimension_x} / ${it.dimension_y}`,
-                        objectFit: "cover",
-                      }}
-                    />
-                  </button>
-                  <div className="cardBar">
-                    <div className="chip">{resLabel}</div>
-                    <button
-                      type="button"
-                      className={`heart ${fav ? "on" : ""}`}
-                      onClick={() => toggleFav(it.id, it)}
-                      title={fav ? "Unfavorite" : "Favorite"}
-                      dangerouslySetInnerHTML={{ __html: heartSvg({ filled: fav }) }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+          {isInitialLoading ? (
+            <div className="masonry" aria-label="Loading wallpapers">
+              <SkeletonRow count={10} keyPrefix="init" />
+            </div>
+          ) : initialError ? (
+            <EmptyState
+              icon={alertSvg()}
+              title="Couldn't load wallpapers"
+              subtitle={err}
+              action={
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => reload(undefined, { scroll: false })}
+                >
+                  Retry
+                </button>
+              }
+            />
+          ) : noResults ? (
+            <EmptyState
+              icon={searchSvg()}
+              title="No wallpapers found"
+              subtitle="Try a different search term or loosen your filters."
+              action={
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => {
+                    setQuery("");
+                    setAppliedQuery("");
+                    setAtleast("");
+                    setRatios("");
+                  }}
+                >
+                  Clear filters
+                </button>
+              }
+            />
+          ) : noFavorites ? (
+            <EmptyState
+              icon={heartOutlineSvg()}
+              title="No favorites yet"
+              subtitle="Tap the heart on any wallpaper to save it here."
+              action={
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setView("browse");
+                    scrollToTop({ smooth: true });
+                  }}
+                >
+                  Browse wallpapers
+                </button>
+              }
+            />
+          ) : (
+            <div className="masonry" aria-label="Wallpapers">
+              {shownList.map((it, idx) => (
+                <WallpaperCard
+                  key={it.id}
+                  item={it}
+                  fav={favs.has(String(it.id))}
+                  onOpen={onOpen}
+                  onToggleFav={toggleFav}
+                  priority={idx < 2}
+                />
+              ))}
 
-            {view === "favorites" && missingFavIds.length ? (
-              missingFavIds.slice(0, 6).map((id) => (
-                <div className="card" key={`missing-${id}`} aria-label="Loading favorite">
-                  <div
-                    className="thumb"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(255,255,255,.06), rgba(255,255,255,.02))",
-                      border: "1px solid rgba(255,255,255,.08)",
-                      aspectRatio: "16 / 10",
-                    }}
-                  />
-                  <div className="cardBar">
-                    <div className="chip" style={{ opacity: 0.7 }}>
-                      Loading…
+              {view === "favorites" && missingFavIds.length
+                ? missingFavIds.slice(0, 6).map((id) => (
+                    <div className="card" key={`missing-${id}`} aria-label="Loading favorite">
+                      <div className="skeleton thumbSkeleton" style={{ aspectRatio: "4 / 5" }} />
+                      <div className="cardBar">
+                        <div className="chip">
+                          <span
+                            className="spin"
+                            aria-hidden="true"
+                            dangerouslySetInnerHTML={{ __html: spinnerSvg() }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="heart on"
+                          onClick={() => toggleFav(id)}
+                          title="Unfavorite"
+                          dangerouslySetInnerHTML={{ __html: heartSvg({ filled: true }) }}
+                        />
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      className="heart on"
-                      onClick={() => toggleFav(id)}
-                      title="Unfavorite"
-                      dangerouslySetInnerHTML={{ __html: heartSvg({ filled: true }) }}
-                    />
-                  </div>
-                </div>
-              ))
-            ) : null}
-          </div>
+                  ))
+                : null}
+
+              {isPaginating ? <SkeletonRow count={4} keyPrefix="more" /> : null}
+            </div>
+          )}
 
           {view === "browse" ? <div ref={sentinelRef} className="sentinel" /> : null}
         </div>
@@ -954,6 +1264,10 @@ export default function App() {
         isFav={active ? favs.has(String(active.id)) : false}
         onToggleFav={toggleFav}
         onSearchTag={onSearchTag}
+        onPrev={goPrev}
+        onNext={goNext}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
       />
     </div>
   );
